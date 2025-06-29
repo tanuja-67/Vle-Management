@@ -1,73 +1,69 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import ApiService from '../services/api';
 
 function VLESelection() {
   const [candidates, setCandidates] = useState([]);
   const [selectedVLEs, setSelectedVLEs] = useState([]);
   const [filterScore, setFilterScore] = useState(50);
+  const [loading, setLoading] = useState(true);
+  const [existingVLEs, setExistingVLEs] = useState([]);
 
   useEffect(() => {
-    // Get villagers who completed the quiz
-    const villagers = JSON.parse(localStorage.getItem('villagers')) || [];
-    const quizResults = JSON.parse(localStorage.getItem('quizResults')) || [];
-    const existingVLEs = JSON.parse(localStorage.getItem('selectedVLEs')) || [];
+    loadData();
+  }, [filterScore]);
 
-    // Combine villager data with quiz results
-    const candidatesWithScores = villagers
-      .filter(villager => villager.quizCompleted)
-      .map(villager => {
-        const quizResult = quizResults.find(result => result.villagerId === villager.id);
-        return {
-          ...villager,
-          quizScore: quizResult ? quizResult.score : 0,
-          isAlreadyVLE: existingVLEs.some(vle => vle.id === villager.id)
-        };
-      })
-      .sort((a, b) => b.quizScore - a.quizScore); // Sort by score descending
-
-    setCandidates(candidatesWithScores);
-    setSelectedVLEs(existingVLEs);
-  }, []);
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [candidatesData, vlesData] = await Promise.all([
+        ApiService.getVLECandidates(filterScore),
+        ApiService.getVLEs()
+      ]);
+      
+      setCandidates(candidatesData);
+      setExistingVLEs(vlesData);
+      setSelectedVLEs([]); // Reset selection when reloading
+    } catch (error) {
+      toast.error('Failed to load data: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleVLESelection = (candidate) => {
-    if (candidate.isAlreadyVLE) {
-      toast.info('This person is already selected as VLE');
-      return;
-    }
-
-    const isCurrentlySelected = selectedVLEs.some(vle => vle.id === candidate.id);
+    const isCurrentlySelected = selectedVLEs.some(vle => vle._id === candidate._id);
     
     if (isCurrentlySelected) {
       // Remove from selection
-      const updated = selectedVLEs.filter(vle => vle.id !== candidate.id);
+      const updated = selectedVLEs.filter(vle => vle._id !== candidate._id);
       setSelectedVLEs(updated);
       toast.info(`${candidate.name} removed from VLE selection`);
     } else {
       // Add to selection
-      const newVLE = {
-        ...candidate,
-        selectedAt: new Date().toISOString(),
-        status: 'pending-approval'
-      };
-      const updated = [...selectedVLEs, newVLE];
+      const updated = [...selectedVLEs, candidate];
       setSelectedVLEs(updated);
       toast.success(`${candidate.name} selected as potential VLE`);
     }
   };
 
-  const confirmVLESelection = () => {
+  const confirmVLESelection = async () => {
     if (selectedVLEs.length === 0) {
       toast.error('Please select at least one VLE');
       return;
     }
 
-    // Save to localStorage
-    localStorage.setItem('selectedVLEs', JSON.stringify(selectedVLEs));
-    
-    toast.success(`${selectedVLEs.length} VLE(s) confirmed for machine allocation`);
-    
-    // Refresh the page to update the UI
-    window.location.reload();
+    try {
+      const villagerIds = selectedVLEs.map(vle => vle._id);
+      await ApiService.selectVLEs(villagerIds);
+      
+      toast.success(`${selectedVLEs.length} VLE(s) confirmed for machine allocation`);
+      
+      // Reload data to update the UI
+      await loadData();
+    } catch (error) {
+      toast.error('Failed to confirm VLE selection: ' + error.message);
+    }
   };
 
   const getScoreColor = (score) => {
@@ -84,7 +80,16 @@ function VLESelection() {
     return 'Needs Development';
   };
 
-  const filteredCandidates = candidates.filter(candidate => candidate.quizScore >= filterScore);
+  if (loading) {
+    return (
+      <div className="page-container">
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <div className="spinner"></div>
+          <p>Loading VLE candidates...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">
@@ -110,14 +115,35 @@ function VLESelection() {
         </p>
       </div>
 
+      {existingVLEs.length > 0 && (
+        <div className="card" style={{ marginBottom: '2rem', background: '#f0fff4', border: '2px solid #48bb78' }}>
+          <h3 style={{ color: '#2d3748', marginBottom: '1rem' }}>
+            Current VLEs ({existingVLEs.length})
+          </h3>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {existingVLEs.map(vle => (
+              <div key={vle._id} style={{
+                background: 'white',
+                padding: '0.5rem 1rem',
+                borderRadius: '20px',
+                border: '1px solid #48bb78',
+                fontSize: '0.9rem'
+              }}>
+                {vle.name} ({vle.quizScore}%) - {vle.status}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {selectedVLEs.length > 0 && (
         <div className="card" style={{ marginBottom: '2rem', background: '#f0fff4', border: '2px solid #48bb78' }}>
           <h3 style={{ color: '#2d3748', marginBottom: '1rem' }}>
-            Current Selection ({selectedVLEs.length} VLE{selectedVLEs.length !== 1 ? 's' : ''})
+            New Selection ({selectedVLEs.length} VLE{selectedVLEs.length !== 1 ? 's' : ''})
           </h3>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             {selectedVLEs.map(vle => (
-              <div key={vle.id} style={{
+              <div key={vle._id} style={{
                 background: 'white',
                 padding: '0.5rem 1rem',
                 borderRadius: '20px',
@@ -136,35 +162,30 @@ function VLESelection() {
 
       <div className="card">
         <h3 style={{ color: '#2d3748', marginBottom: '1rem' }}>
-          Eligible Candidates ({filteredCandidates.length})
+          Eligible Candidates ({candidates.length})
         </h3>
         
-        {filteredCandidates.length === 0 ? (
+        {candidates.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#718096', padding: '2rem' }}>
             <p>No candidates meet the current criteria.</p>
             <p>Try lowering the minimum score or ensure villagers have completed their quizzes.</p>
           </div>
         ) : (
           <div className="grid grid-2">
-            {filteredCandidates.map(candidate => {
-              const isSelected = selectedVLEs.some(vle => vle.id === candidate.id);
-              const isAlreadyVLE = candidate.isAlreadyVLE;
+            {candidates.map(candidate => {
+              const isSelected = selectedVLEs.some(vle => vle._id === candidate._id);
               
               return (
                 <div 
-                  key={candidate.id} 
+                  key={candidate._id} 
                   className={`card vle-candidate ${isSelected ? 'selected' : ''}`}
-                  style={{
-                    opacity: isAlreadyVLE ? 0.6 : 1,
-                    cursor: isAlreadyVLE ? 'not-allowed' : 'pointer'
-                  }}
+                  style={{ cursor: 'pointer' }}
                   onClick={() => toggleVLESelection(candidate)}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                     <div>
                       <h4 style={{ color: '#2d3748', marginBottom: '0.5rem' }}>
                         {candidate.name}
-                        {isAlreadyVLE && <span style={{ color: '#48bb78', fontSize: '0.8rem', marginLeft: '0.5rem' }}>(Selected VLE)</span>}
                       </h4>
                       <p style={{ color: '#718096', fontSize: '0.9rem' }}>
                         Age: {candidate.age} | Contact: {candidate.contact}
@@ -219,16 +240,14 @@ function VLESelection() {
                     </p>
                   </div>
 
-                  {!isAlreadyVLE && (
-                    <div style={{
-                      textAlign: 'center',
-                      color: isSelected ? '#48bb78' : '#667eea',
-                      fontWeight: 'bold',
-                      fontSize: '0.9rem'
-                    }}>
-                      {isSelected ? '✓ Selected for VLE' : 'Click to select as VLE'}
-                    </div>
-                  )}
+                  <div style={{
+                    textAlign: 'center',
+                    color: isSelected ? '#48bb78' : '#667eea',
+                    fontWeight: 'bold',
+                    fontSize: '0.9rem'
+                  }}>
+                    {isSelected ? '✓ Selected for VLE' : 'Click to select as VLE'}
+                  </div>
                 </div>
               );
             })}

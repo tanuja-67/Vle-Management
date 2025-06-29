@@ -10,11 +10,11 @@ const Navbar = () => {
   };
 
   const navItems = [
-    { name: 'Dashboard',  icon: '🏠' },
-    { name: 'Village Identification', icon: '📍' },
+    { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
+    { name: 'Village Identification', href: '/village-identification', icon: '📍' },
     { name: 'VLE Management', href: '/vle-management', icon: '👥' },
     { name: 'Analytics', href: '/agri-recommendation', icon: '📊' },
-    { name: 'Machine Outsources', icon: '⚙️' },
+    { name: 'Machine Outsources', href: '/machine-outsources', icon: '⚙️' },
   ];
 
   const isActive = (href) => {

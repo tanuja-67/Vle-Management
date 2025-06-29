@@ -66,7 +66,7 @@ function MainSelection() {
         </div>
       </div>
 
-      {/* Main Action Selection - Only 2 Cards */}
+      {/* Main Action Selection - Both Cards */}
       <div className="grid grid-2" style={{ gap: '3rem', width: '100%' }}>
         {/* VLE Management System */}
         <Link to="/vle-management" style={{ textDecoration: 'none', width: '100%' }}>
